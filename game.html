@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Maze Escape</title>
+<style>
+html, body {
+  margin:0; padding:0; background:#111; color:#eee;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  overflow:hidden; height:100%;
+}
+header, footer {
+  padding:10px 12px; background:#181818;
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap; z-index:10;
+}
+header h1 { font-size:16px; margin:0; font-weight:600; }
+header .btn {
+  padding:8px 12px; border:1px solid #444; border-radius:6px;
+  text-decoration:none; color:#eee;
+}
+header .btn:hover { background:#222; }
+
+#wrap {
+  display:flex; justify-content:center; align-items:center;
+  width:100%; height:calc(100vh - 60px); background:#000; overflow:hidden;
+}
+#game {
+  display:block; background:#000; image-rendering:pixelated;
+  box-shadow:0 0 0 1px #333,0 10px 30px rgba(0,0,0,.5);
+}
+
+/* ======= MENU ======= */
+#menu {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.4); backdrop-filter:blur(8px);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:white; text-align:center; z-index:20;
+}
+#menu h1 { font-size:60px; margin-bottom:30px; }
+.menu-btn {
+  padding:12px 30px; margin:12px; font-size:20px;
+  border:none; cursor:pointer; border-radius:12px;
+  background:rgba(255,255,255,0.12); color:white;
+  transition:all 0.18s ease;
+}
+.menu-btn:hover { background:rgba(255,255,255,0.28); transform:scale(1.05); }
+#menu-info { margin-top:20px; font-size:16px; max-width:360px; text-align:left; }
+#secretInputBox { margin-top:30px; display:flex; flex-direction:column; align-items:center; }
+#secretCodeInput {
+  padding:10px 20px; border-radius:10px; border:none;
+  text-align:center; font-size:18px; outline:none; width:140px;
+  background:rgba(255,255,255,0.1); color:#fff;
+}
+#secretCodeInput::placeholder { color:#aaa; }
+#unlockBtn {
+  margin-top:10px; padding:8px 20px; font-size:16px;
+  border:none; border-radius:10px; background:#333; color:#fff; cursor:pointer;
+}
+#unlockBtn:hover { background:#444; }
+
+/* ======= POPUP SECRETO ======= */
+#secretPopup {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.65); color:white; z-index:30; text-align:center;
+}
+#secretPopup .box {
+  background:rgba(20,20,20,0.9); padding:30px 40px;
+  border-radius:12px; box-shadow:0 0 20px rgba(0,0,0,0.5);
+}
+#secretPopup h2 { margin:0 0 10px 0; font-size:28px; letter-spacing:1px; }
+#secretPopup p { margin:10px 0 20px; font-size:16px; }
+#secretPopup button {
+  padding:10px 30px; font-size:16px; border:none; border-radius:10px;
+  background:#444; color:white; cursor:pointer;
+}
+#secretPopup button:hover { background:#555; }
+
+/* ======= BOTÃO DE MÚSICA ======= */
+#music-toggle {
+  position:absolute; right:18px; top:18px;
+  font-size:22px; cursor:pointer; user-select:none;
+  opacity:0.8; transition:opacity 0.2s;
+}
+#music-toggle:hover { opacity:1; }
+
+footer { display:none; }
+</style>
+</head>
+<body>
+
+<!-- MENU -->
+<div id="menu">
+  <h1>Maze Escape</h1>
+  <div>
+    <button class="menu-btn" onclick="startGame('Facil')">Fácil</button>
+    <button class="menu-btn" onclick="startGame('Medio')">Médio</button>
+    <button class="menu-btn" onclick="startGame('Dificil')">Difícil</button>
+    <button class="menu-btn" id="extremeBtn" style="display:none;" onclick="startGame('Extreme')">Extreme</button>
+  </div>
+
+  <div id="secretInputBox">
+    <input id="secretCodeInput" maxlength="4" placeholder="Código" />
+    <button id="unlockBtn">Desbloquear</button>
+  </div>
+
+  <div id="menu-info">
+    <p><b>Como jogar:</b></p>
+    <p>Mover: <span class="kbd">WASD</span> ou setas</p>
+    <p>Correr: <span class="kbd">Espaço</span></p>
+    <p>Reiniciar: <span class="kbd">R</span></p>
+    <p>Voltar ao menu: <span class="kbd">M</span></p>
+    <p>Objetivo: Coletar todas as chaves e escapar</p>
+  </div>
+
+  <div id="music-toggle">🔊</div>
+</div>
+
+<!-- POPUP SECRETO -->
+<div id="secretPopup">
+  <div class="box">
+    <h2 id="popupCode"></h2>
+    <p>Coloque este código no Menu</p>
+    <button onclick="closeSecretPopup()">OK</button>
+  </div>
+</div>
+
+<header>
+  <h1>🧭 Maze Escape</h1>
+  <a class="btn" href="#" id="btn-restart">Reiniciar (R)</a>
+  <span class="pill">🔑 Chaves: <span id="ui-keys">0</span>/<span id="ui-keygoal">0</span></span>
+</header>
+
+<div id="wrap"><canvas id="game"></canvas></div>
+
+<script>
+/* ===================== MÚSICA ===================== */
+let musicEnabled = localStorage.getItem('maze_music_enabled') !== '0';
+const musicToggle = document.getElementById('music-toggle');
+let bgm = null, bgmIndex = 0;
+const tracks = ["music1.mp3", "music2.mp3", "music3.mp3"];
+
+function updateMusicIcon(){ musicToggle.textContent = musicEnabled ? '🔊' : '🔇'; }
+updateMusicIcon();
+
+musicToggle.onclick = ()=>{
+  musicEnabled = !musicEnabled;
+  localStorage.setItem('maze_music_enabled', musicEnabled ? '1':'0');
+  updateMusicIcon();
+  if(!musicEnabled && bgm){ bgm.pause(); bgm = null; }
+  else if(musicEnabled){ startMusic(); }
+};
+
+function startMusic(){
+  if(!musicEnabled) return;
+  if(bgm){ bgm.pause(); bgm = null; }
+  bgmIndex = Math.floor(Math.random()*tracks.length);
+  function playNext(){
+    if(!musicEnabled) return;
+    bgm = new Audio(tracks[bgmIndex]);
+    bgm.volume = 0.5;
+    bgm.onended = ()=>{
+      bgmIndex = (bgmIndex+1)%tracks.length;
+      playNext();
+    };
+    bgm.play().catch(()=>{});
+  }
+  playNext();
+}
+
+function stopMusic(){
+  if(bgm){ bgm.pause(); bgm = null; }
+}
+
+/* ============== RESTANTE DO JOGO ============== */
+
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+resizeCanvas(); window.addEventListener('resize',resizeCanvas);
+function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight-60;}
+let COLS=41,ROWS=41,CELL,MARGIN_X,MARGIN_Y,state=null;
+let NUM_KEYS=5,NUM_ENEMIES=6,NUM_TRAPS=20;
+const WALK_SPEED=1.2,SPRINT_MULT=2.0,ENEMY_SPEED=0.6;
+const keysDown={};
+const menu=document.getElementById('menu');
+const secretPopup=document.getElementById('secretPopup');
+const popupCode=document.getElementById('popupCode');
+const extremeBtn=document.getElementById('extremeBtn');
+const secretCodeInput=document.getElementById('secretCodeInput');
+const unlockBtn=document.getElementById('unlockBtn');
+
+if(localStorage.getItem('secretCode')){extremeBtn.style.display='inline-block';}
+
+unlockBtn.onclick=()=>{
+  const val=secretCodeInput.value.trim();
+  if(val && val===localStorage.getItem('secretCode')){
+    extremeBtn.style.display='inline-block';
+    alert('Modo Extreme desbloqueado!');
+  }else alert('Código incorreto.');
+};
+
+function startGame(diff){
+  stopMusic(); // evita sobreposição
+  if(musicEnabled) startMusic(); // inicia música ao entrar no jogo
+  if(diff==='Facil'){NUM_ENEMIES=3;NUM_KEYS=3;NUM_TRAPS=10;COLS=41;ROWS=41;}
+  else if(diff==='Medio'){NUM_ENEMIES=6;NUM_KEYS=5;NUM_TRAPS=20;COLS=41;ROWS=41;}
+  else if(diff==='Dificil'){NUM_ENEMIES=7;NUM_KEYS=6;NUM_TRAPS=25;COLS=41;ROWS=41;}
+  else if(diff==='Extreme'){
+    NUM_ENEMIES=10;NUM_KEYS=8;NUM_TRAPS=30;COLS=51;ROWS=51;
+    localStorage.removeItem('secretCode');
+    extremeBtn.style.display='none';
+  }
+  menu.style.display='none'; newGame(diff); requestAnimationFrame(loop);
+}
+
+const rand=n=>Math.floor(Math.random()*n);
+function makeMaze(c,r){
+  const g=Array.from({length:r},()=>Array(c).fill(1));
+  const st=[[1,1]]; g[1][1]=0; const dir=[[2,0],[-2,0],[0,2],[0,-2]];
+  while(st.length){
+    const [x,y]=st[st.length-1];
+    const dirs=dir.slice().sort(()=>Math.random()-0.5);
+    let carved=false;
+    for(const [dx,dy]of dirs){
+      const nx=x+dx,ny=y+dy;
+      if(nx>0&&ny>0&&nx<c-1&&ny<r-1&&g[ny][nx]===1){
+        g[y+dy/2][x+dx/2]=0; g[ny][nx]=0; st.push([nx,ny]); carved=true; break;
+      }
+    }
+    if(!carved)st.pop();
+  }return g;
+}
+
+function placeRandomEmpty(g,avoid){
+  let tries=0;
+  while(tries++<9999){
+    const x=rand(COLS),y=rand(ROWS);
+    if(g[y][x]===0){
+      if(!avoid)return{x,y};
+      const dx=x-avoid.x,dy=y-avoid.y;
+      if(dx*dx+dy*dy>100)return{x,y};
+    }
+  }return{x:1,y:1};
+}
+
+function newGame(diff){
+  CELL=Math.floor(Math.min(canvas.width*0.8,canvas.height)/Math.max(COLS,ROWS));
+  MARGIN_X=Math.floor((canvas.width - COLS*CELL)/2);
+  MARGIN_Y=Math.floor((canvas.height - ROWS*CELL)/2);
+  const g=makeMaze(COLS,ROWS),start={x:1,y:1},exit={x:COLS-2,y:ROWS-2};
+  const keys=[],traps=[],enemies=[],checkpoints=[];
+  for(let i=0;i<NUM_KEYS;i++)keys.push(placeRandomEmpty(g,start));
+  for(let i=0;i<NUM_TRAPS;i++)traps.push(placeRandomEmpty(g,start));
+  for(let i=0;i<NUM_ENEMIES;i++){
+    const p=placeRandomEmpty(g,start);
+    enemies.push({x:p.x+0.5,y:p.y+0.5,vx:0,vy:0});
+  }
+  const numCP=(diff==='Extreme')?1:rand(3)+2;
+  for(let i=0;i<numCP;i++)checkpoints.push({...placeRandomEmpty(g,start),active:false});
+  let secretKey=null,secretCode=null;
+  if(diff==='Dificil'){
+    secretKey=keys[rand(keys.length)];
+    secretCode=Math.floor(1000+Math.random()*9000).toString();
+  }
+  state={diff,grid:g,start,exit,keys,traps,enemies,checkpoints,player:{x:start.x+0.5,y:start.y+0.5,stamina:1,keys:0,respawn:start},secretKey,secretCode,frame:0};
+  document.getElementById('ui-keygoal').textContent=NUM_KEYS;
+  document.getElementById('ui-keys').textContent=0;
+}
+
+function closeSecretPopup(){secretPopup.style.display='none';}
+
+window.addEventListener('keydown',e=>{
+  keysDown[e.key.toLowerCase()]=true;
+  if(e.key==='r'||e.key==='R')newGame(state.diff);
+  if(e.key==='m'||e.key==='M'){state=null;menu.style.display='flex'; stopMusic();}
+});
+window.addEventListener('keyup',e=>keysDown[e.key.toLowerCase()]=false);
+document.getElementById('btn-restart').addEventListener('click',e=>{e.preventDefault();newGame(state.diff);});
+
+function cellFree(x,y){return state.grid[y]&&state.grid[y][x]===0;}
+function tryMove(p,speed){
+  let dx=0,dy=0;
+  if(keysDown['w']||keysDown['arrowup'])dy-=1;
+  if(keysDown['s']||keysDown['arrowdown'])dy+=1;
+  if(keysDown['a']||keysDown['arrowleft'])dx-=1;
+  if(keysDown['d']||keysDown['arrowright'])dx+=1;
+  const len=Math.hypot(dx,dy)||1;dx/=len;dy/=len;
+  if(state.diff!=='Extreme'&&keysDown[' ']&&p.stamina>0){
+    speed*=SPRINT_MULT;p.stamina=Math.max(0,p.stamina-0.01);
+  }else p.stamina=Math.min(1,p.stamina+0.005);
+  let nx=p.x+dx*speed*0.1,ny=p.y+dy*speed*0.1;
+  if(cellFree(Math.floor(nx),Math.floor(p.y)))p.x=nx;
+  if(cellFree(Math.floor(p.x),Math.floor(ny)))p.y=ny;
+}
+
+function update(){
+  if(!state)return;
+  state.frame++;
+  tryMove(state.player,WALK_SPEED);
+  for(let i=state.keys.length-1;i>=0;i--){
+    const k=state.keys[i],dx=(k.x+0.5)-state.player.x,dy=(k.y+0.5)-state.player.y;
+    if(dx*dx+dy*dy<0.35){
+      if(state.secretKey===k&&state.secretCode){
+        localStorage.setItem('secretCode',state.secretCode);
+        popupCode.textContent=state.secretCode;
+        secretPopup.style.display='flex';
+      }
+      state.keys.splice(i,1);
+      state.player.keys++;
+      document.getElementById('ui-keys').textContent=state.player.keys;
+    }
+  }
+  for(const e of state.enemies){
+    const dx=state.player.x-e.x,dy=state.player.y-e.y;
+    const dist2=dx*dx+dy*dy,len=Math.hypot(dx,dy)||1;
+    const speed=(state.diff==='Extreme')?0.9:(state.diff==='Dificil'?0.7:ENEMY_SPEED);
+    if(dist2<36){e.vx=(dx/len)*speed;e.vy=(dy/len)*speed;}
+    else if(Math.random()<0.01){e.vx=(Math.random()-0.5)*speed*2;e.vy=(Math.random()-0.5)*speed*2;}
+    let nx=e.x+e.vx*0.1,ny=e.y+e.vy*0.1;
+    if(cellFree(Math.floor(nx),Math.floor(e.y)))e.x=nx;else e.vx*=-1;
+    if(cellFree(Math.floor(e.x),Math.floor(ny)))e.y=ny;else e.vy*=-1;
+    if((dx*dx+dy*dy)<0.25){
+      const cp=state.checkpoints.find(c=>c.active);
+      const resp=cp?cp:{x:state.start.x,y:state.start.y};
+      state.player.x=resp.x+0.5;state.player.y=resp.y+0.5;
+    }
+  }
+  for(const c of state.checkpoints){
+    const dx=(c.x+0.5)-state.player.x,dy=(c.y+0.5)-state.player.y;
+    if(dx*dx+dy*dy<0.3)c.active=true;
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(!state)return;
+  for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+    if(state.grid[y][x]===1){ctx.fillStyle='#222';ctx.fillRect(MARGIN_X+x*CELL,MARGIN_Y+y*CELL,CELL,CELL);}
+  }
+  for(const c of state.checkpoints){
+    ctx.fillStyle=c.active?'#b06cff':'#5e2b97';
+    ctx.fillRect(MARGIN_X+c.x*CELL+CELL*0.3,MARGIN_Y+c.y*CELL+CELL*0.3,CELL*0.4,CELL*0.4);
+  }
+  for(const k of state.keys){
+    if(state.secretKey===k && state.frame%30<15) ctx.fillStyle='#ff7a00';
+    else ctx.fillStyle='#ffd24d';
+    ctx.fillRect(MARGIN_X+k.x*CELL+CELL*0.2,MARGIN_Y+k.y*CELL+CELL*0.2,CELL*0.6,CELL*0.6);
+  }
+  ctx.fillStyle='#ff4b4b';
+  for(const e of state.enemies){
+    ctx.beginPath();ctx.arc(MARGIN_X+e.x*CELL,MARGIN_Y+e.y*CELL,CELL*0.3,0,Math.PI*2);ctx.fill();
+  }
+  ctx.fillStyle='#8fff9b';
+  ctx.beginPath();ctx.arc(MARGIN_X+state.player.x*CELL,MARGIN_Y+state.player.y*CELL,CELL*0.35,0,Math.PI*2);ctx.fill();
+}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+loop();
+</script>
+</body>
+</html>
